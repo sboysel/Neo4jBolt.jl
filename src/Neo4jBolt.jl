@@ -8,8 +8,8 @@ include("../lib/JuliaBolt/src/JuliaBolt.jl")
 using .JuliaBolt
 
 export fix_parameters, record_data, record_values, record_items, index, value, consume, last_bookmark,
-    custom_auth, basic_auth, kerberos_auth, session, single, begin_transaction, run_transaction, commit, 
-    rollback, write_transaction, read_transaction, summary, start_node, end_node, put_node, put_relationship, 
+    custom_auth, basic_auth, kerberos_auth, session, single, begin_transaction, run_transaction, commit,
+    rollback, write_transaction, read_transaction, summary, start_node, end_node, put_node, put_relationship,
     READ_ACCESS, WRITE_ACCESS
 export Statement, Graph, Node, Relationship, PackStreamHydrator, Neo4jBoltDriver, UnitOfWork, Path, CartesianPoint,
     WGS84Point, DateWrapper, TimeWrapper, DateTimeWrapper, DurationWrapper
@@ -69,7 +69,7 @@ mutable struct Neo4jBoltDriver
     pool::ConnectionPool
     closed::Bool
     address
-    max_retry_time    
+    max_retry_time
     security_plan
     encrypted
 
@@ -80,17 +80,17 @@ mutable struct Neo4jBoltDriver
         if address.scheme != "bolt"
             throw(ErrorException("Neo4jBolt driver requires bolt URI scheme, $(address.scheme) given"))
         end
-        
+
         if haskey(config, "encrypted")
             #
         end
-        
+
         function connector(address; kwargs...)
             return bolt_connect(address; (config..., kwargs...)...)
         end
 
         pool = ConnectionPool(connector, address; config...)
-        
+
         # acquire and release a connection
         release(pool, acquire(pool))
 
@@ -99,9 +99,9 @@ mutable struct Neo4jBoltDriver
         else
             max_retry_time = default_config["max_retry_time"]
         end
-        
+
         return new("bolt", pool, false, address, max_retry_time, nothing, false)
-        
+
     end
 end
 
@@ -119,11 +119,11 @@ end
 # Driver -------------------------- #
 
 function session(driver::Neo4jBoltDriver, access_mode=nothing; parameters...)
-    aquierer = function(access_mode)
+    acquirer = function(access_mode)
         return JuliaBolt.acquire(driver.pool, access_mode)
     end
     if !in(:max_retry_time, Base.keys(parameters))
-        return Session(aquierer, access_mode; max_retry_time=driver.max_retry_time, parameters...)
+        return Session(acquirer, access_mode; max_retry_time=driver.max_retry_time, parameters...)
     else
         return Session((access_mode)->JuliaBolt.acquire(driver.pool, access_mode), access_mode; parameters...)
     end
@@ -153,7 +153,7 @@ mutable struct Statement
     text::String
     metadata::Union{Dict, Nothing}
     timeout::Union{Number, Nothing}
-    
+
     function Statement(text; metadata::Union{Dict, Nothing}=nothing, timeout::Union{Number, Nothing}=nothing)
         return new(text, metadata, timeout)
     end
@@ -179,7 +179,7 @@ mutable struct Session
     connection_access_mode
     transaction
     last_result
-    
+
     function Session(acquirer, access_mode; parameters...)
         bookmarks_in = nothing
         if haskey(parameters, :bookmark)
@@ -190,7 +190,7 @@ mutable struct Session
         end
         if haskey(parameters, :max_retry_time)
             max_retry_time = parameters[:max_retry_time]
-        end    
+        end
         return new(acquirer, access_mode, bookmarks_in, nothing, max_retry_time, false, nothing, nothing, nothing, nothing)
     end
 end
@@ -209,7 +209,7 @@ function connect(session::Session, access_mode=nothing)
     end
     session.connection = session.acquirer(access_mode)
     session.connection_access_mode = access_mode
-    
+
 end
 
 # Session ------------------------- #
@@ -299,7 +299,7 @@ function Base.run(session::Session, statement::Statement, parameters::Dict=Dict(
             session.bookmark_out = bookmark
         end
     end
-    
+
     session.last_result = result = StatementResult(session, hydrant, result_metadata)
 
     if has_trans
@@ -312,22 +312,22 @@ function Base.run(session::Session, statement::Statement, parameters::Dict=Dict(
     else
         run_metadata[:bookmarks] = session.bookmarks_in
     end
-    
+
     bolt_run(cx, statement_text, parameters; run_metadata...)
     bolt_pull_all(
-        cx, 
+        cx,
         on_records = function(_, r)
             append!(result.records, hydrate_records(hydrant, keys(result), r))
         end,
         on_success=done,
         on_failure=fail,
         on_summary=function(_, r)
-            detach(result, false)   
-        end          
+            detach(result, false)
+        end
     )
 
     if !has_trans
-        try 
+        try
             JuliaBolt.send(session.connection)
             JuliaBolt.fetch(session.connection)
         catch ex
@@ -343,19 +343,19 @@ function Base.run(session::Session, statement::Statement, parameters::Dict=Dict(
 end
 
 
-Base.run(session::Session, statement::String, parameters::Dict=Dict(); kwparameters...) = 
+Base.run(session::Session, statement::String, parameters::Dict=Dict(); kwparameters...) =
     Base.run(session, Statement(statement), parameters; kwparameters...)
-    
-    
-Base.run(session::Session, statement::AbstractArray{UInt8}, parameters::Dict=Dict(); kwparameters...) = 
+
+
+Base.run(session::Session, statement::AbstractArray{UInt8}, parameters::Dict=Dict(); kwparameters...) =
     Base.run(session, Statement(String(statement)), parameters; kwparameters...)
 
-    
+
 # Session ------------------------- #
 
 function send(session::Session)
     if session.connection != nothing
-        try 
+        try
             JuliaBolt.send(session.connection)
         catch ex
             if isa(ex, JuliaBolt.ConnectionExpired)
@@ -371,7 +371,7 @@ end
 
 function fetch(session::Session)
     if session.connection != nothing
-        try 
+        try
             detail_count, _ = JuliaBolt.fetch(session.connection)
             return detail_count
         catch ex
@@ -381,7 +381,7 @@ function fetch(session::Session)
                 rethrow()
             end
         end
-    else 
+    else
         return 0
     end
 end
@@ -390,7 +390,7 @@ end
 
 function sync(session::Session)
     if session.connection != nothing
-        try 
+        try
             detail_count, _ = bolt_sync(session.connection)
             return detail_count
         catch ex
@@ -400,7 +400,7 @@ function sync(session::Session)
                 rethrow()
             end
         end
-    else 
+    else
         return 0
     end
 end
@@ -477,10 +477,10 @@ function begin_transaction(f::Function, args...)
         ex_thrown = true
         rethrow()
     finally
-        
+
         if tx.closed
             return
-        elseif tx.success == nothing 
+        elseif tx.success == nothing
             tx.success = !ex_thrown
         end
         close(tx)
@@ -573,7 +573,7 @@ function run_transaction(session::Session, access_mode::String, unit_of_work::Un
     retry_delay = 0
     errors = Exception[]
     t0 = time()
-   
+
     f = unit_of_work.f
     metadata = unit_of_work.metadata
     timeout = unit_of_work.timeout
@@ -617,7 +617,7 @@ function run_transaction(session::Session, access_mode::String, unit_of_work::Un
         t1 = time()
         if t1 - t0 > session.max_retry_time
             break
-        end   
+        end
         retry_delay = retry_delay_generator(retry_delay)
         sleep(retry_delay)
     end
@@ -668,7 +668,7 @@ mutable struct Transaction
     on_close
     success::Union{Bool, Nothing}
     closed::Bool
-    
+
     function Transaction(session; on_close=nothing)
         return new(session, on_close, nothing, false)
     end
@@ -711,7 +711,7 @@ function Base.close(transaction::Transaction)
     catch ex
         if isa(ex, JuliaBolt.CypherError)
             transaction.success = false
-        else 
+        else
             rethrow()
         end
     finally
@@ -749,7 +749,7 @@ function fix_parameters(parameters, protocol_version; kwargs...)
         return Dict()
     end
 
-    dehydrator = PackStreamDehydrator(protocol_version; kwargs...) 
+    dehydrator = PackStreamDehydrator(protocol_version; kwargs...)
 
     try
         return dehydrate(dehydrator, [parameters])[1]
@@ -821,11 +821,11 @@ function Base.iterate(sr::StatementResult, sent=false)
             sent = true
         end
         fetch(sr.session)
-    end 
+    end
 
     if length(sr.records) > 0
         return (popfirst!(sr.records), sent)
-    else 
+    else
         return nothing
     end
 end
@@ -887,7 +887,7 @@ function peek(sr::StatementResult)
         return sr.records[1]
     elseif !attached(sr)
         return nothing
-    else 
+    else
         send(sr.session)
     end
 
@@ -897,7 +897,7 @@ function peek(sr::StatementResult)
             return sr.records[1]
         end
     end
-    
+
     return nothing
 end
 
@@ -965,10 +965,10 @@ mutable struct BoltStatementResultSummary
 
         plan = nothing
         profile = nothing
-        if haskey(metadata, "plan") 
-            plan = make_plan(metadata["plan"] ) 
+        if haskey(metadata, "plan")
+            plan = make_plan(metadata["plan"] )
         end
-        if haskey(metadata, "profile") 
+        if haskey(metadata, "profile")
             profile = make_plan(metadata["profile"])
             plan = profile
         end
@@ -1045,7 +1045,7 @@ function make_plan(plan_dict::Dict)
     arguments = if haskey(plan_dict, "arguments") plan_dict["arguments"] else [] end
 
     children = if haskey(plan_dict, "children") Vector([make_plan(child) for child in plan_dict["children"]]) else [] end
-    
+
     if haskey(plan_dict, "dbHits") || haskey(plan_dict, "rows")
         db_hits = if haskey(plan_dict, "db_hits") plan_dict["db_hits"] else 0 end
         rows = if haskey(plan_dict, "rows") plan_dict["rows"] else 0 end
@@ -1090,7 +1090,7 @@ mutable struct SummaryCounters
         indexes_removed = if haskey(stats, "indexes-removed") stats["indexes-removed"] else nothing end
         constraints_added = if haskey(stats, "constraints-added") stats["constraints-added"] else nothing end
         constraints_removed = if haskey(stats, "constraints-removed") stats["constraints-removed"] else nothing end
-      
+
         return new(nodes_created, nodes_deleted, relationships_created, relationships_deleted, properties_set, labels_added,
             labels_removed, indexes_added, indexes_removed, constraints_added, constraints_removed)
     end
